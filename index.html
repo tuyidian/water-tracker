@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>喝水打卡助手 💧</title>
+<style>
+  :root {
+    --blue: #2b7de9;
+    --blue-light: #e8f1fd;
+    --blue-dark: #1a5bb5;
+    --text: #1c2b3a;
+    --muted: #6b7a8c;
+    --bg: #f4f8fc;
+    --card: #ffffff;
+    --ok: #27ae60;
+    --warn: #e67e22;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 20px 16px; }
+  h1 { font-size: 26px; text-align: center; margin: 10px 0 2px; }
+  .sub { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 18px; }
+
+  .card {
+    background: var(--card);
+    border-radius: 18px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 10px rgba(43,125,233,.08);
+  }
+
+  /* 进度区 */
+  .progress-area { text-align: center; }
+  .ring-box { position: relative; width: 220px; height: 220px; margin: 0 auto 10px; }
+  .ring-box svg { transform: rotate(-90deg); }
+  .ring-bg { stroke: var(--blue-light); }
+  .ring-fg { stroke: var(--blue); transition: stroke-dashoffset .6s ease; }
+  .ring-center {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+  }
+  .ring-center .num { font-size: 44px; font-weight: 700; color: var(--blue-dark); }
+  .ring-center .unit { font-size: 15px; color: var(--muted); }
+  .ring-center .drop { font-size: 30px; margin-bottom: -4px; }
+  .goal-line { font-size: 16px; color: var(--muted); }
+  .goal-line b { color: var(--text); }
+  .cheer { margin-top: 10px; font-size: 17px; font-weight: 600; min-height: 24px; color: var(--ok); }
+
+  /* 打卡按钮 */
+  .btn-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .btn {
+    border: none; border-radius: 14px;
+    background: var(--blue); color: #fff;
+    font-size: 20px; font-weight: 700;
+    padding: 22px 0 16px;
+    cursor: pointer;
+    box-shadow: 0 3px 8px rgba(43,125,233,.3);
+    transition: transform .1s;
+  }
+  .btn:active { transform: scale(.95); }
+  .btn small { display: block; font-size: 13px; font-weight: 400; opacity: .9; margin-top: 4px; }
+  .btn.custom { background: #5a9cf5; }
+
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .btn-ghost {
+    border: 2px solid var(--blue-light); border-radius: 14px;
+    background: #fff; color: var(--muted);
+    font-size: 16px; padding: 14px 0; cursor: pointer;
+  }
+  .btn-ghost:active { transform: scale(.97); }
+
+  /* 提醒设置 */
+  .card h2 { font-size: 18px; margin-bottom: 14px; }
+  .remind-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .remind-row label { font-size: 16px; }
+  .switch { position: relative; width: 58px; height: 32px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; inset: 0; background: #cfd8e3; border-radius: 32px; cursor: pointer; transition: .3s;
+  }
+  .slider:before {
+    content: ""; position: absolute; width: 26px; height: 26px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: .3s;
+  }
+  input:checked + .slider { background: var(--blue); }
+  input:checked + .slider:before { transform: translateX(26px); }
+  .interval-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    border: 2px solid var(--blue-light); background: #fff; color: var(--text);
+    border-radius: 20px; padding: 8px 16px; font-size: 15px; cursor: pointer;
+  }
+  .chip.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 10px; line-height: 1.6; }
+
+  /* 今日记录 */
+  .log-list { list-style: none; max-height: 200px; overflow-y: auto; }
+  .log-list li {
+    display: flex; justify-content: space-between;
+    padding: 10px 4px; border-bottom: 1px solid #eef3f8; font-size: 16px;
+  }
+  .log-list li:last-child { border-bottom: none; }
+  .log-list .t { color: var(--muted); font-size: 14px; }
+  .empty { text-align: center; color: var(--muted); font-size: 14px; padding: 16px 0; }
+
+  /* 每日统计 */
+  .stats { display: flex; justify-content: space-around; text-align: center; }
+  .stats .s b { display: block; font-size: 22px; color: var(--blue-dark); }
+  .stats .s span { font-size: 13px; color: var(--muted); }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%) translateY(20px);
+    background: var(--text); color: #fff; font-size: 15px;
+    padding: 12px 22px; border-radius: 24px; opacity: 0; pointer-events: none;
+    transition: .3s;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💧 喝水打卡助手</h1>
+  <div class="sub">科学饮水，健康每一天</div>
+
+  <!-- 今日进度 -->
+  <div class="card progress-area">
+    <div class="ring-box">
+      <svg width="220" height="220" viewBox="0 0 220 220">
+        <circle class="ring-bg" cx="110" cy="110" r="96" fill="none" stroke-width="18"/>
+        <circle class="ring-fg" id="ring" cx="110" cy="110" r="96" fill="none" stroke-width="18"
+                stroke-linecap="round" stroke-dasharray="603" stroke-dashoffset="603"/>
+      </svg>
+      <div class="ring-center">
+        <div class="drop">💧</div>
+        <div class="num" id="total">0</div>
+        <div class="unit">毫升 (ml)</div>
+      </div>
+    </div>
+    <div class="goal-line">今日目标：<b id="goalText">1500</b> ml（约 7 杯水）</div>
+    <div class="cheer" id="cheer"></div>
+  </div>
+
+  <!-- 打卡按钮 -->
+  <div class="card">
+    <div class="btn-grid">
+      <button class="btn" onclick="drink(100)">☕<small>小杯 100ml</small></button>
+      <button class="btn" onclick="drink(200)">🥛<small>中杯 200ml</small></button>
+      <button class="btn" onclick="drink(250)">🍶<small>大杯 250ml</small></button>
+    </div>
+    <div class="row2">
+      <button class="btn-ghost" onclick="customDrink()">✏️ 自定义水量</button>
+      <button class="btn-ghost" onclick="undoLast()">↩️ 撤销上一笔</button>
+    </div>
+  </div>
+
+  <!-- 定时提醒 -->
+  <div class="card">
+    <h2>⏰ 定时提醒</h2>
+    <div class="remind-row">
+      <label>开启提醒</label>
+      <div class="switch">
+        <input type="checkbox" id="remindOn" onchange="toggleRemind()">
+        <span class="slider"></span>
+      </div>
+    </div>
+    <div class="interval-btns" id="intervalBtns">
+      <button class="chip" data-min="30" onclick="setInterval2(30)">每 30 分钟</button>
+      <button class="chip active" data-min="45" onclick="setInterval2(45)">每 45 分钟</button>
+      <button class="chip" data-min="60" onclick="setInterval2(60)">每 1 小时</button>
+      <button class="chip" data-min="90" onclick="setInterval2(90)">每 1.5 小时</button>
+    </div>
+    <div class="hint" id="remindHint">
+      开启后会弹出喝水提醒通知（仅早 7 点至晚 10 点提醒）。<br>
+      如果开关无效，请点击一次页面再开启——浏览器要求先与本页面互动才允许通知。
+    </div>
+  </div>
+
+  <!-- 统计 -->
+  <div class="card">
+    <h2>📊 近 7 天记录</h2>
+    <div class="stats">
+      <div class="s"><b id="statDays">0</b><span>达标天数</span></div>
+      <div class="s"><b id="statAvg">0</b><span>日均 (ml)</span></div>
+      <div class="s"><b id="statStreak">0</b><span>连续达标</span></div>
+    </div>
+  </div>
+
+  <!-- 今日记录 -->
+  <div class="card">
+    <h2>📝 今天喝了</h2>
+    <ul class="log-list" id="logList"></ul>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const GOAL_KEY = "water_goal";
+const DATA_KEY = "water_data";
+const REMIND_KEY = "water_remind";
+const DEFAULT_GOAL = 1500;
+
+let goal = parseInt(localStorage.getItem(GOAL_KEY)) || DEFAULT_GOAL;
+let data = JSON.parse(localStorage.getItem(DATA_KEY) || "{}");
+// data 结构: { "2026-11-19": { total: 500, logs: [{t:"09:30", ml:250}] } }
+let remindOn = localStorage.getItem(REMIND_KEY + "_on") === "1";
+let remindMin = parseInt(localStorage.getItem(REMIND_KEY + "_min")) || 45;
+
+function today() { return new Date().toISOString().slice(0, 10); }
+function nowTime() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+function ensureToday() {
+  const t = today();
+  if (!data[t]) data[t] = { total: 0, logs: [] };
+  return data[t];
+}
+
+function render() {
+  const day = ensureToday();
+  document.getElementById("total").textContent = day.total;
+  document.getElementById("goalText").textContent = goal;
+  const pct = Math.min(day.total / goal, 1);
+  const C = 2 * Math.PI * 96;
+  document.getElementById("ring").style.strokeDashoffset = C * (1 - pct);
+
+  // 鼓励语
+  const cheer = document.getElementById("cheer");
+  if (day.total === 0) { cheer.textContent = "从第一杯水开始吧 💪"; cheer.style.color = "var(--muted)"; }
+  else if (day.total < goal * 0.5) { cheer.textContent = "加油，继续保持！"; cheer.style.color = "var(--warn)"; }
+  else if (day.total < goal) { cheer.textContent = "快到目标啦，还差 " + (goal - day.total) + " ml"; cheer.style.color = "var(--warn)"; }
+  else { cheer.textContent = "🎉 今日目标已达成，真棒！"; cheer.style.color = "var(--ok)"; }
+
+  // 记录列表
+  const list = document.getElementById("logList");
+  list.innerHTML = "";
+  if (day.logs.length === 0) {
+    list.innerHTML = '<div class="empty">今天还没有记录哦</div>';
+  } else {
+    day.logs.slice().reverse().forEach(l => {
+      const li = document.createElement("li");
+      li.innerHTML = "<span>💧 " + l.ml + " ml</span><span class='t'>" + l.t + "</span>";
+      list.appendChild(li);
+    });
+  }
+
+  // 7 天统计
+  const days = Object.keys(data).sort().slice(-7);
+  let hit = 0, sum = 0, streak = 0;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const d = data[days[i]];
+    sum += d.total;
+    if (d.total >= goal) hit++;
+    if (d.total >= goal) streak++; else break;
+  }
+  document.getElementById("statDays").textContent = hit;
+  document.getElementById("statAvg").textContent = days.length ? Math.round(sum / days.length) : 0;
+  document.getElementById("statStreak").textContent = streak;
+
+  save();
+}
+
+function drink(ml) {
+  const day = ensureToday();
+  day.total += ml;
+  day.logs.push({ t: nowTime(), ml: ml });
+  render();
+  toast("已记录 " + ml + " ml ✅");
+}
+
+function undoLast() {
+  const day = ensureToday();
+  if (day.logs.length === 0) { toast("今天没有可撤销的记录"); return; }
+  const last = day.logs.pop();
+  day.total = Math.max(0, day.total - last.ml);
+  render();
+  toast("已撤销 " + last.ml + " ml");
+}
+
+function customDrink() {
+  const v = prompt("请输入喝水量（毫升），例如 300：");
+  const n = parseInt(v);
+  if (n > 0 && n <= 5000) drink(n);
+  else if (v !== null) toast("请输入 1-5000 之间的数字");
+}
+
+/* ---------- 提醒 ---------- */
+let lastRemind = Date.now();
+function toggleRemind() {
+  const on = document.getElementById("remindOn").checked;
+  if (on && "Notification" in window && Notification.permission !== "granted") {
+    Notification.requestPermission().then(p => {
+      if (p !== "granted") {
+        document.getElementById("remindOn").checked = false;
+        toast("浏览器拒绝了通知权限，可在浏览器设置中开启");
+        return;
+      }
+      remindOn = true; saveRemind();
+    });
+  } else {
+    remindOn = on; saveRemind();
+  }
+  if (on) lastRemind = Date.now();
+}
+function setInterval2(min) {
+  remindMin = min;
+  document.querySelectorAll("#intervalBtns .chip").forEach(c =>
+    c.classList.toggle("active", parseInt(c.dataset.min) === min));
+  saveRemind();
+}
+function saveRemind() {
+  localStorage.setItem(REMIND_KEY + "_on", remindOn ? "1" : "0");
+  localStorage.setItem(REMIND_KEY + "_min", remindMin);
+}
+setInterval(() => {
+  if (!remindOn) return;
+  const h = new Date().getHours();
+  if (h < 7 || h >= 22) return;          // 只在 7:00-22:00 提醒
+  const day = ensureToday();
+  if (day.total >= goal) return;         // 达标后不再提醒
+  if (Date.now() - lastRemind >= remindMin * 60000) {
+    lastRemind = Date.now();
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("💧 该喝水啦！", { body: "今日已喝 " + day.total + " ml，目标 " + goal + " ml" });
+    }
+  }
+  document.title = (Date.now() - lastRemind < 3000) ? "💧 该喝水啦！" : "喝水打卡助手 💧";
+}, 30000);
+
+function save() { localStorage.setItem(DATA_KEY, JSON.stringify(data)); localStorage.setItem(GOAL_KEY, goal); }
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+// 初始化
+document.getElementById("remindOn").checked = remindOn && ("Notification" in window && Notification.permission === "granted");
+setInterval2(remindMin);
+render();
+</script>
+</body>
+</html>
