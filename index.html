@@ -162,23 +162,20 @@
   <!-- 定时提醒 -->
   <div class="card">
     <h2>⏰ 定时提醒</h2>
-    <div class="remind-row">
-      <label>开启提醒</label>
+    <label class="remind-row" style="cursor:pointer;">
+      <span>开启提醒（点这里或点开关）</span>
       <div class="switch">
         <input type="checkbox" id="remindOn" onchange="toggleRemind()">
         <span class="slider"></span>
       </div>
-    </div>
+    </label>
     <div class="interval-btns" id="intervalBtns">
       <button class="chip" data-min="30" onclick="setInterval2(30)">每 30 分钟</button>
       <button class="chip active" data-min="45" onclick="setInterval2(45)">每 45 分钟</button>
       <button class="chip" data-min="60" onclick="setInterval2(60)">每 1 小时</button>
       <button class="chip" data-min="90" onclick="setInterval2(90)">每 1.5 小时</button>
     </div>
-    <div class="hint" id="remindHint">
-      开启后会弹出喝水提醒通知（仅早 7 点至晚 10 点提醒）。<br>
-      如果开关无效，请点击一次页面再开启——浏览器要求先与本页面互动才允许通知。
-    </div>
+    <div class="hint" id="remindHint"></div>
   </div>
 
   <!-- 统计 -->
@@ -199,6 +196,17 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- 页面内喝水提醒弹窗（任何浏览器都支持） -->
+<div id="remindModal" style="display:none; position:fixed; inset:0; background:rgba(20,40,70,.75); z-index:999; justify-content:center; align-items:center;">
+  <div style="background:#fff; border-radius:24px; padding:36px 30px; max-width:320px; width:86%; text-align:center;">
+    <div style="font-size:64px;">💧</div>
+    <div style="font-size:24px; font-weight:700; margin:10px 0 6px;">该喝水啦！</div>
+    <div id="remindModalInfo" style="font-size:16px; color:var(--muted); margin-bottom:24px;"></div>
+    <button onclick="closeRemindModal()" style="border:none; background:var(--blue); color:#fff; font-size:19px; font-weight:700; padding:16px 0; width:100%; border-radius:16px; cursor:pointer;">好的，这就喝 ☕</button>
+    <div style="margin-top:10px;"><button onclick="closeRemindModal(true)" style="border:none; background:none; color:var(--muted); font-size:14px; cursor:pointer;">暂缓一下</button></div>
+  </div>
+</div>
 
 <script>
 const GOAL_KEY = "water_goal";
@@ -293,22 +301,53 @@ function customDrink() {
 
 /* ---------- 提醒 ---------- */
 let lastRemind = Date.now();
+let remindMode = localStorage.getItem(REMIND_KEY + "_mode") || "page"; // page=页面内提醒 notify=系统通知
+
 function toggleRemind() {
   const on = document.getElementById("remindOn").checked;
-  if (on && "Notification" in window && Notification.permission !== "granted") {
-    Notification.requestPermission().then(p => {
-      if (p !== "granted") {
-        document.getElementById("remindOn").checked = false;
-        toast("浏览器拒绝了通知权限，可在浏览器设置中开启");
-        return;
+  if (on) {
+    if ("Notification" in window) {
+      if (Notification.permission === "granted") {
+        remindMode = "notify";
+        remindOn = true;
+      } else if (Notification.permission === "denied") {
+        remindMode = "page";
+        remindOn = true;
+      } else {
+        // 尝试申请系统通知权限（微信内置浏览器不支持，会走 catch）
+        try {
+          Notification.requestPermission().then(p => {
+            if (p === "granted") remindMode = "notify";
+            else remindMode = "page";
+            saveRemind(); updateHint();
+          }).catch(() => { remindMode = "page"; saveRemind(); updateHint(); });
+        } catch (e) { remindMode = "page"; }
       }
-      remindOn = true; saveRemind();
-    });
+    } else {
+      // 微信等内置浏览器不支持系统通知 → 使用页面内提醒
+      remindMode = "page";
+    }
+    remindOn = true;
+    lastRemind = Date.now();
   } else {
-    remindOn = on; saveRemind();
+    remindOn = false;
   }
-  if (on) lastRemind = Date.now();
+  saveRemind(); updateHint();
 }
+
+function updateHint() {
+  const h = document.getElementById("remindHint");
+  if (!remindOn) {
+    h.innerHTML = "开启后，到时间会提醒您喝水（仅早 7 点至晚 10 点提醒，当天喝够目标后自动停止）。";
+    return;
+  }
+  if (remindMode === "notify") {
+    h.innerHTML = "✅ 提醒已开启（<b>系统通知</b>模式）：到时间会在手机通知栏弹出提醒。";
+  } else {
+    h.innerHTML = "✅ 提醒已开启（<b>页面提醒</b>模式）：到时间本页面会弹出大字提醒，并伴有铃声和振动。<br>💡 请保持本页面处于打开状态。若想使用系统通知栏提醒，请在微信中点右上角「...」→「在浏览器打开」，或把网页添加到手机主屏幕后从主屏幕打开。";
+  }
+}
+
 function setInterval2(min) {
   remindMin = min;
   document.querySelectorAll("#intervalBtns .chip").forEach(c =>
@@ -318,21 +357,56 @@ function setInterval2(min) {
 function saveRemind() {
   localStorage.setItem(REMIND_KEY + "_on", remindOn ? "1" : "0");
   localStorage.setItem(REMIND_KEY + "_min", remindMin);
+  localStorage.setItem(REMIND_KEY + "_mode", remindMode);
 }
+
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.35].forEach(delay => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.25, ctx.currentTime + delay);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.3);
+      o.start(ctx.currentTime + delay); o.stop(ctx.currentTime + delay + 0.3);
+    });
+  } catch (e) {}
+}
+
+function showRemindModal() {
+  const day = ensureToday();
+  document.getElementById("remindModalInfo").textContent =
+    "今日已喝 " + day.total + " ml，目标 " + goal + " ml";
+  const m = document.getElementById("remindModal");
+  m.style.display = "flex";
+  beep();
+  if (navigator.vibrate) { try { navigator.vibrate([400, 200, 400]); } catch (e) {} }
+}
+function closeRemindModal(snooze) {
+  document.getElementById("remindModal").style.display = "none";
+  lastRemind = Date.now() + (snooze ? 5 * 60000 : 0); // 暂缓则 5 分钟后再提醒
+}
+function fireRemind() {
+  if (remindMode === "notify" && "Notification" in window && Notification.permission === "granted") {
+    const day = ensureToday();
+    new Notification("💧 该喝水啦！", { body: "今日已喝 " + day.total + " ml，目标 " + goal + " ml" });
+  }
+  showRemindModal(); // 页面内提醒始终弹，双保险
+}
+
 setInterval(() => {
   if (!remindOn) return;
   const h = new Date().getHours();
   if (h < 7 || h >= 22) return;          // 只在 7:00-22:00 提醒
   const day = ensureToday();
   if (day.total >= goal) return;         // 达标后不再提醒
+  const modalOpen = document.getElementById("remindModal").style.display !== "none";
+  if (modalOpen) return;
   if (Date.now() - lastRemind >= remindMin * 60000) {
-    lastRemind = Date.now();
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification("💧 该喝水啦！", { body: "今日已喝 " + day.total + " ml，目标 " + goal + " ml" });
-    }
+    fireRemind();
   }
-  document.title = (Date.now() - lastRemind < 3000) ? "💧 该喝水啦！" : "喝水打卡助手 💧";
-}, 30000);
+}, 5000);
 
 function save() { localStorage.setItem(DATA_KEY, JSON.stringify(data)); localStorage.setItem(GOAL_KEY, goal); }
 function toast(msg) {
@@ -342,8 +416,9 @@ function toast(msg) {
 }
 
 // 初始化
-document.getElementById("remindOn").checked = remindOn && ("Notification" in window && Notification.permission === "granted");
+document.getElementById("remindOn").checked = remindOn;
 setInterval2(remindMin);
+updateHint();
 render();
 </script>
 </body>
